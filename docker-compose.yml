@@ -1,0 +1,85 @@
+version: '3.8'
+
+networks:
+  backend:
+    driver: ${NETWORKS_DRIVER}
+
+volumes:
+  mysql:
+    driver: ${VOLUMES_DRIVER}
+  phpmyadmin:
+    driver: ${VOLUMES_DRIVER}
+  jenkins:
+
+
+services:
+
+  ## APACHE WEBSERVER ##
+  csiha-backend:
+    container_name: csiha-backend
+    build:
+      context: ./root/
+      args:
+        - PHP_UPSTREAM_CONTAINER=${APACHE_PHP_UPSTREAM_CONTAINER}
+        - PHP_UPSTREAM_PORT=${APACHE_PHP_UPSTREAM_PORT}
+        - PHP_UPSTREAM_TIMEOUT=${APACHE_PHP_UPSTREAM_TIMEOUT}
+        - DOCUMENT_ROOT=${APACHE_DOCUMENT_ROOT}
+        - APACHE_INSTALL_HTTP2=${APACHE_INSTALL_HTTP2}
+    volumes:
+      - ./conf/000-default.conf:/etc/apache2/sites-available/000-default.conf
+      - ./root/:/var/www/csiha/public/
+      - ./conf/php.ini:/usr/local/etc/php/php.ini
+    ports:
+      - "${APACHE_HOST_HTTP_PORT}:80"
+    depends_on:
+      - mysql
+    networks:
+      - backend
+
+  ## MYSQL ##
+  mysql:
+    container_name: csiha-mysql-db
+    image: mysql:${MYSQL_VERSION}
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ./db/mysql:/var/lib/mysql
+    restart: unless-stopped
+    ports:
+      - "${MYSQL_PORT}:3306"
+    networks:
+      - backend
+
+  ## PHPMYADMIN SQL ADMIN ##
+  #depend on: vár a megadott service-re
+  phpmyadmin:
+    container_name: csiha-phpmyadmin
+    image: phpmyadmin/phpmyadmin
+    restart: unless-stopped
+    links:
+      - mysql
+    environment:
+      - PMA_HOST=mysql
+      - PMA_PORT=3306
+      - MAX_EXECUTION_TIME=${PMA_MAX_EXECUTION_TIME}
+      - MEMORY_LIMIT=${PMA_MEMORY_LIMIT}
+      - UPLOAD_LIMIT=${PMA_UPLOAD_LIMIT}
+    ports:
+      - "${PMA_PORT}:80"
+    depends_on:
+      - mysql
+    networks:
+      - backend
+
+  ## EMAIL SERVER ##
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: always
+    ports:
+      - 1025:1025
+      - 8025:8025
+    networks:
+      - backend
